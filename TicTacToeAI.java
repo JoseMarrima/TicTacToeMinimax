@@ -3,157 +3,138 @@ import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 
+/**
+ * Tic‑Tac‑Toe with Minimax AI.
+ * X = Human, O = Computer.
+ */
 public class TicTacToeAI extends JFrame implements ActionListener {
-    private JButton[] buttons = new JButton[9];
-    private char[] board = new char[9];
-    private boolean playerTurn = true; // true = Player (X), false = AI (O)
+
+    private final JButton[] buttons = new JButton[9];
+    private final char[] board = new char[9];
+    private boolean playerTurn = true; // Human starts
 
     public TicTacToeAI() {
-        setTitle("Tic-Tac-Toe with Minimax");
+        setTitle("Tic‑Tac‑Toe (AI)");
         setSize(400, 400);
         setLayout(new GridLayout(3, 3));
+        setResizable(false);
         setDefaultCloseOperation(EXIT_ON_CLOSE);
 
-        for (int i = 0; i < 9; i++) {
-            buttons[i] = new JButton("");
-            buttons[i].setFont(new Font(Font.SANS_SERIF, Font.BOLD, 60));
-            buttons[i].addActionListener(this);
-            add(buttons[i]);
-            board[i] = ' ';
-        }
-
+        initBoardUI();
+        resetBoard();
         setVisible(true);
     }
 
+    /* ---------- UI setup ---------- */
+
+    private void initBoardUI() {
+        Font f = new Font(Font.SANS_SERIF, Font.BOLD, 60);
+        for (int i = 0; i < 9; i++) {
+            buttons[i] = new JButton();
+            buttons[i].setFont(f);
+            buttons[i].addActionListener(this);
+            add(buttons[i]);
+        }
+    }
+
+    /* ---------- Event handling ---------- */
+
     @Override
     public void actionPerformed(ActionEvent e) {
-        JButton buttonClicked = (JButton) e.getSource();
+        if (!playerTurn) return; // AI thinking / after game
+        int idx = getButtonIndex((JButton) e.getSource());
+        if (idx < 0 || board[idx] != ' ') return;
 
-        int idx = -1;
-        for (int i = 0; i < 9; i++) {
-            if (buttons[i] == buttonClicked) {
-                idx = i;
-                break;
-            }
-        }
+        makeMove(idx, 'X');
+        if (checkAndHandleGameOver()) return;
 
-        if (playerTurn && board[idx] == ' ') {
-            makeMove(idx, 'X');
-            if (!isGameOver()) {
-                playerTurn = false;
-                Timer timer = new Timer(500, evt -> {
-                    aiMove();
-                });
-                timer.setRepeats(false);
-                timer.start();
+        playerTurn = false;
+        Timer aiTimer = new Timer(500, evt -> aiMove());
+        aiTimer.setRepeats(false); 
+        aiTimer.start();
 
-            }
-        }
     }
 
-    private void makeMove(int idx, char player) {
-        board[idx] = player;
-        buttons[idx].setText(String.valueOf(player));
-    }
+    /* ---------- AI ---------- */
 
     private void aiMove() {
-        int bestScore = Integer.MIN_VALUE;
-        int bestMove = -1;
-
-        for (int i = 0; i < 9; i++) {
-            if (board[i] == ' ') {
-                board[i] = 'O';
-                int score = minimax(board, 0, false);
-                board[i] = ' ';
-                if (score > bestScore) {
-                    bestScore = score;
-                    bestMove = i;
-                }
+        int bestScore = Integer.MIN_VALUE, bestMove = -1;
+        for (int i = 0; i < 9; i++) if (board[i] == ' ') {
+            board[i] = 'O';
+            int score = minimax(false, 0);
+            board[i] = ' ';
+            if (score > bestScore) {
+                bestScore = score;
+                bestMove = i;
             }
         }
-
-        if (bestMove != -1) {
-            makeMove(bestMove, 'O');
-            if (!isGameOver()) {
-                playerTurn = true;
-            }
-        }
+        makeMove(bestMove, 'O');
+        if (!checkAndHandleGameOver()) playerTurn = true;
     }
 
-    private int minimax(char[] boardState, int depth, boolean isMaximizing) {
-        Character winner = checkWinner(boardState);
-        if (winner != null) {
-            if (winner == 'O') return 10 - depth;
-            else if (winner == 'X') return depth - 10;
-            else return 0;
-        }
+    private int minimax(boolean isMax, int depth) {
+        Character win = getWinnerForMinimax();
+        if (win != null)
+            return switch (win) {
+                case 'O' -> 10 - depth;
+                case 'X' -> depth - 10;
+                default  -> 0;
+            };
 
-        if (isMaximizing) {
-            int bestScore = Integer.MIN_VALUE;
-            for (int i = 0; i < 9; i++) {
-                if (boardState[i] == ' ') {
-                    boardState[i] = 'O';
-                    int score = minimax(boardState, depth + 1, false);
-                    boardState[i] = ' ';
-                    bestScore = Math.max(score, bestScore);
-                }
-            }
-            return bestScore;
-        } else {
-            int bestScore = Integer.MAX_VALUE;
-            for (int i = 0; i < 9; i++) {
-                if (boardState[i] == ' ') {
-                    boardState[i] = 'X';
-                    int score = minimax(boardState, depth + 1, true);
-                    boardState[i] = ' ';
-                    bestScore = Math.min(score, bestScore);
-                }
-            }
-            return bestScore;
+        int best = isMax ? Integer.MIN_VALUE : Integer.MAX_VALUE;
+        for (int i = 0; i < 9; i++) if (board[i] == ' ') {
+            board[i] = isMax ? 'O' : 'X';
+            int score = minimax(!isMax, depth + 1);
+            board[i] = ' ';
+            best = isMax ? Math.max(best, score) : Math.min(best, score);
         }
+        return best;
     }
 
-    private boolean isGameOver() {
-        Character winner = checkWinner(board);
-        if (winner != null) {
-            String message;
-            if (winner == 'X') message = "You Win!";
-            else if (winner == 'O') message = "AI Wins!";
-            else message = "It's a Tie!";
-            JOptionPane.showMessageDialog(this, message);
-            resetGame();
-            return true;
-        }
-        return false;
+    /* ---------- Helpers ---------- */
+
+    private int getButtonIndex(JButton b) {
+        for (int i = 0; i < 9; i++) if (buttons[i] == b) return i;
+        return -1;
     }
 
-    private Character checkWinner(char[] boardState) {
-        int[][] wins = {
-                {0, 1, 2}, {3, 4, 5}, {6, 7, 8}, // rows
-                {0, 3, 6}, {1, 4, 7}, {2, 5, 8}, // columns
-                {0, 4, 8}, {2, 4, 6}              // diagonals
+    private void makeMove(int idx, char mark) {
+        board[idx] = mark;
+        buttons[idx].setText(String.valueOf(mark));
+    }
+
+    private boolean checkAndHandleGameOver() {
+        Character winner = checkWinner();
+        if (winner == null) return false;
+
+        String msg = switch (winner) {
+            case 'X' -> "You win! 🎉";
+            case 'O' -> "AI wins! 🤖";
+            default  -> "It's a tie.";
         };
-
-        for (int[] win : wins) {
-            if (boardState[win[0]] != ' ' &&
-                boardState[win[0]] == boardState[win[1]] &&
-                boardState[win[1]] == boardState[win[2]]) {
-                return boardState[win[0]];
-            }
-        }
-
-        // Check tie
-        boolean emptyFound = false;
-        for (char c : boardState) {
-            if (c == ' ') {
-                emptyFound = true;
-                break;
-            }
-        }
-        return emptyFound ? null : 'T';
+        JOptionPane.showMessageDialog(this, msg);
+        resetBoard();
+        return true;
     }
 
-    private void resetGame() {
+    private Character checkWinner() {
+        int[][] w = {
+            {0,1,2},{3,4,5},{6,7,8},
+            {0,3,6},{1,4,7},{2,5,8},
+            {0,4,8},{2,4,6}
+        };
+        for (int[] a : w)
+            if (board[a[0]] != ' ' && board[a[0]] == board[a[1]] && board[a[1]] == board[a[2]])
+                return board[a[0]];
+        for (char c : board) if (c == ' ') return null;
+        return 'T';
+    }
+
+    private Character getWinnerForMinimax() {
+        return checkWinner();
+    }
+
+    private void resetBoard() {
         for (int i = 0; i < 9; i++) {
             board[i] = ' ';
             buttons[i].setText("");
